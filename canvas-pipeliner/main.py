@@ -283,7 +283,7 @@ def process_outgoing_edges(
 
         # Check if the edge is an output edge
         if edge in output_edges:
-            cards[outgoing_node] = f"# <u>OUTPUT</u>\n{responses[node]['content']}"
+            cards[outgoing_node] = f"{responses[node]['content']}"
             continue
 
         # Check if the edge is an input-output edge
@@ -296,7 +296,7 @@ def process_outgoing_edges(
             input_content = "\n\n".join(all_messages)
             cards[
                 outgoing_node
-            ] = f"# <u>INPUT</u>\n{input_content}\n\n# <u>OUTPUT</u>\n{responses[node]['content']}"
+            ] = f"# <u>PROMPT</u>\n{input_content}\n\n# <u>RESPONSE</u>\n{responses[node]['content']}"
             continue
 
         # Check if the edge is labeled
