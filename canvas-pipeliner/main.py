@@ -80,7 +80,7 @@ def parse_canvas_file(file_path):
         file_path (str): The path to the JSON file to parse.
 
     Returns:
-        tuple: A tuple containing dictionaries of groups, cards, links, group_labels, link_labels, card_colors, edge_colors, output_edges, and input_output_edges.
+        tuple: A tuple containing dictionaries of groups, cards, links, group_labels, link_labels, card_colors, edge_colors, output_edges, input_output_edges, and global_variables.
     """
     # Open the file and load the JSON data
     with open(file_path, "r") as file:
@@ -98,6 +98,7 @@ def parse_canvas_file(file_path):
     input_output_edges = []
     card_spatial_data = {}
     edge_commands = {}
+    global_variables = {}  # NEW: Initialize dictionary to store global variables
 
     # Define a mapping from color codes to color names
     color_map = {
@@ -121,6 +122,13 @@ def parse_canvas_file(file_path):
             card_spatial_data[node["id"]] = (node["x"], node["y"])
             if "color" in node:
                 card_colors[node["id"]] = color_map.get(node["color"], "green")
+
+            # NEW: Check if the node is a global variable card
+            lines = node["text"].split("\n")
+            if len(lines) > 1 and re.match(r"\{.*\}", lines[0]):
+                variable_name = lines[0].strip("{}")
+                variable_content = "\n".join(lines[1:])
+                global_variables[variable_name] = variable_content
 
     # Loop over all nodes again to assign cards to their respective groups
     for node in canvas_data["nodes"]:
@@ -177,16 +185,27 @@ def parse_canvas_file(file_path):
         output_edges,
         input_output_edges,
         edge_commands,
+        global_variables,  # NEW
     )
 
 
 def create_messages_list(
-    node, groups, cards, responses, replacements, order, group_replacements
+    node,
+    groups,
+    cards,
+    responses,
+    replacements,
+    order,
+    group_replacements,
+    global_variables,
 ):
     # Identify the group to which the current node belongs
     group = next(
         (group for group, nodes in groups.items() if node in nodes), "no_group"
     )
+
+    # Merge group-specific replacements and global variables
+    all_replacements = {**group_replacements, **global_variables}
 
     # Initialize a list to hold the messages
     messages = []
@@ -201,7 +220,7 @@ def create_messages_list(
         for previous_node in sorted_group:
             # Fetch the text of the card and perform replacements
             previous_message = cards[previous_node]
-            for variable_name, replacement in group_replacements.items():
+            for variable_name, replacement in all_replacements.items():
                 placeholder = "{" + variable_name + "}"
                 if placeholder in previous_message:
                     if variable_name.startswith("@"):
@@ -216,21 +235,13 @@ def create_messages_list(
                             placeholder, replacement
                         )
 
-            # Replace any occurrence of {[[Page Name]]} in previous_message
-            matches = re.findall(r"\{\[\[(.*?)\]\]\}", previous_message)
-            for match in matches:
-                if match in group_replacements:
-                    previous_message = previous_message.replace(
-                        f"{{[[{match}]]}}", group_replacements[match]
-                    )
-
             # Add a 'user' message with this text and the language model's response
             messages.append({"role": "user", "content": previous_message})
             messages.append(responses[previous_node])
 
     # Fetch the text of the current node, perform replacements, and add a 'user' message
     current_message = cards[node]
-    for variable_name, replacement in group_replacements.items():
+    for variable_name, replacement in all_replacements.items():
         placeholder = "{" + variable_name + "}"
         if placeholder in current_message:
             if variable_name.startswith("@"):
@@ -246,7 +257,7 @@ def create_messages_list(
     for match in matches:
         page_content = get_page_content(match)
         current_message = current_message.replace(f"{{[[{match}]]}}", page_content)
-        group_replacements[match] = page_content
+        all_replacements[match] = page_content
 
     messages.append({"role": "user", "content": current_message})
 
@@ -344,6 +355,7 @@ def process_graph(
     input_output_edges: List[Tuple[str, str]],
     canvas: Dict,
     edge_commands: Dict[Tuple[str, str], str],
+    global_variables: Dict[str, str],  # NEW
 ) -> List[Dict[str, Any]]:
     """
     Process a graph that represents a conversation structure, make calls to a language model and handle the responses.
@@ -359,6 +371,7 @@ def process_graph(
     - output_edges: A list of edges representing 'Output' connections.
     - input_output_edges: A list of edges representing 'Input-Output' connections.
     - canvas: A dictionary representing the original Obsidian Canvas data.
+    - global_variables: A dictionary mapping global variable names to their content.
 
     Returns:
     A dictionary mapping node IDs to responses from the language model.
@@ -404,7 +417,14 @@ def process_graph(
 
         # Create a list of messages to be sent to the language model
         messages = create_messages_list(
-            node, groups, cards, responses, replacements, order, group_replacements
+            node,
+            groups,
+            cards,
+            responses,
+            replacements,
+            order,
+            group_replacements,
+            global_variables,  # NEW
         )
 
         # Call the language model and store the response
@@ -475,6 +495,7 @@ def run_canvas_file(file_path: str):
         output_edges,
         input_output_edges,
         edge_commands,
+        global_variables,  # NEW
     ) = parse_canvas_file(file_path)
 
     # Build the graph
@@ -501,6 +522,7 @@ def run_canvas_file(file_path: str):
         input_output_edges,
         canvas_data,
         edge_commands,
+        global_variables,  # NEW
     )
     update_canvas_data(canvas_data, cards)
     save_canvas_data(file_path, canvas_data)
