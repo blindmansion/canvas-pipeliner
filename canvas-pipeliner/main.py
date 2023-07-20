@@ -65,7 +65,11 @@ def get_page_content(page_name: str) -> str:
         return f"The page {page_name} does not exist"
 
     with open(page_path, "r") as file:
-        return file.read()
+        content = file.readlines()
+
+    content.insert(0, f"# {page_name}\n")
+
+    return "".join(content)
 
 
 def parse_canvas_file(file_path):
@@ -189,18 +193,25 @@ def create_messages_list(
             for variable_name, replacement in group_replacements.items():
                 placeholder = "{" + variable_name + "}"
                 if placeholder in previous_message:
-                    previous_message = previous_message.replace(
-                        placeholder, replacement
-                    )
-
-                # Replace any occurrence of {{[[Page Name]]}} in previous_message
-                matches = re.findall(r"\{\{\[\[(.*?)\]\]\}\}", previous_message)
-                for match in matches:
-                    if match in group_replacements:
-                        placeholder = "{{[[{}]]}}".format(match)
+                    if variable_name.startswith("@"):
+                        # Remove possible brackets from replacement
+                        replacement = replacement.strip("[]")
+                        page_content = get_page_content(replacement)
                         previous_message = previous_message.replace(
-                            placeholder, group_replacements[match]
+                            placeholder, page_content
                         )
+                    else:
+                        previous_message = previous_message.replace(
+                            placeholder, replacement
+                        )
+
+            # Replace any occurrence of {[[Page Name]]} in previous_message
+            matches = re.findall(r"\{\[\[(.*?)\]\]\}", previous_message)
+            for match in matches:
+                if match in group_replacements:
+                    previous_message = previous_message.replace(
+                        f"{{[[{match}]]}}", group_replacements[match]
+                    )
 
             # Add a 'user' message with this text and the language model's response
             messages.append({"role": "user", "content": previous_message})
@@ -211,19 +222,19 @@ def create_messages_list(
     for variable_name, replacement in group_replacements.items():
         placeholder = "{" + variable_name + "}"
         if placeholder in current_message:
-            current_message = current_message.replace(placeholder, replacement)
+            if variable_name.startswith("@"):
+                # Remove possible brackets from replacement
+                replacement = replacement.strip("[]")
+                page_content = get_page_content(replacement)
+                current_message = current_message.replace(placeholder, page_content)
+            else:
+                current_message = current_message.replace(placeholder, replacement)
 
     # Check for Obsidian page syntax and replace with page content
-    matches = re.findall(r"\{\{\[\[(.*?)\]\]\}\}", current_message)
+    matches = re.findall(r"\{\[\[(.*?)\]\]\}", current_message)
     for match in matches:
         page_content = get_page_content(match)
-        print(f"Page content: {page_content}")
-        placeholder = rf"\{{\[\[{match}\]\]\}}"
-
-        print(f"Before replacement: {current_message}")
-        current_message = re.sub(placeholder, page_content, current_message)
-
-        print(f"After replacement: {current_message}")
+        current_message = current_message.replace(f"{{[[{match}]]}}", page_content)
         group_replacements[match] = page_content
 
     messages.append({"role": "user", "content": current_message})
@@ -272,20 +283,20 @@ def process_outgoing_edges(
 
         # Check if the edge is an output edge
         if edge in output_edges:
-            cards[outgoing_node] = f"<u>**OUTPUT**</u>\n\n{responses[node]['content']}"
+            cards[outgoing_node] = f"# <u>OUTPUT</u>\n{responses[node]['content']}"
             continue
 
         # Check if the edge is an input-output edge
         elif edge in input_output_edges:
             # Gather all messages in the group except the last one
             all_messages = [
-                f"**{'USER' if m['role'] == 'user' else 'ASSISTANT'}:**\n{m['content']}"
+                f"### {'USER' if m['role'] == 'user' else 'ASSISTANT'}:\n{m['content']}"
                 for m in messages[:-1]
             ]
             input_content = "\n\n".join(all_messages)
             cards[
                 outgoing_node
-            ] = f"<u>**INPUT**</u>\n\n{input_content}\n\n<u>**OUTPUT**</u>\n\n{responses[node]['content']}"
+            ] = f"# <u>INPUT</u>\n{input_content}\n\n# <u>OUTPUT</u>\n{responses[node]['content']}"
             continue
 
         # Check if the edge is labeled
