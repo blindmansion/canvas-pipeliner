@@ -134,7 +134,9 @@ def parse_canvas_file(file_path):
     )
 
 
-def create_messages_list(node, groups, cards, responses, replacements, order):
+def create_messages_list(
+    node, groups, cards, responses, replacements, order, group_replacements
+):
     group = next(
         (group for group, nodes in groups.items() if node in nodes), "no_group"
     )
@@ -145,12 +147,21 @@ def create_messages_list(node, groups, cards, responses, replacements, order):
         previous_nodes = [n for n in groups[group] if n in order and n in responses]
         sorted_group = sorted(previous_nodes, key=lambda node: order[node])
         for previous_node in sorted_group:
-            messages.append({"role": "user", "content": cards[previous_node]})
+            # Create a new variable for the previous message and perform replacements on it
+            previous_message = cards[previous_node]
+            for variable_name, replacement in group_replacements.items():
+                placeholder = "{" + variable_name + "}"
+                if placeholder in previous_message:
+                    previous_message = previous_message.replace(
+                        placeholder, replacement
+                    )
+
+            messages.append({"role": "user", "content": previous_message})
             messages.append(responses[previous_node])
 
     # Create a new variable for the current card's message and perform replacements on it
     current_message = cards[node]
-    for variable_name, replacement in replacements[node].items():
+    for variable_name, replacement in group_replacements.items():
         placeholder = "{" + variable_name + "}"
         if placeholder in current_message:
             current_message = current_message.replace(placeholder, replacement)
@@ -174,6 +185,7 @@ def process_outgoing_edges(
     input_output_edges,
     cards,
     messages,
+    group_replacements,
 ):
     for outgoing_node in outgoing_edges[node]:
         edge = (node, outgoing_node)
@@ -184,7 +196,7 @@ def process_outgoing_edges(
         elif edge in input_output_edges:
             # Gather all messages in the group except the last one
             all_messages = [
-                f"**{'User' if m['role'] == 'user' else 'Assistant'}:** {m['content']}"
+                f"**{'USER' if m['role'] == 'user' else 'ASSISTANT'}:**\n{m['content']}"
                 for m in messages[:-1]
             ]
             input_content = "\n\n".join(
@@ -199,6 +211,8 @@ def process_outgoing_edges(
             variable_name = labeled_links[edge]
             if node in responses:
                 replacements[outgoing_node][variable_name] = responses[node]["content"]
+                # Update the group_replacements dictionary with the new replacement
+                group_replacements[variable_name] = responses[node]["content"]
             else:
                 pending_replacements[outgoing_node][variable_name] = node
 
@@ -236,6 +250,7 @@ def process_graph(
     responses = {}
     replacements = {node: {} for node in cards}
     pending_replacements = {node: {} for node in cards}
+    group_replacements = {}  # New dictionary to store the replacements for each group
 
     order = {}
     order_count = 0
@@ -247,7 +262,7 @@ def process_graph(
         order_count += 1
 
         messages = create_messages_list(
-            node, groups, cards, responses, replacements, order
+            node, groups, cards, responses, replacements, order, group_replacements
         )
 
         response = llm_call(messages)
@@ -272,7 +287,8 @@ def process_graph(
             output_edges,
             input_output_edges,
             cards,
-            messages,  # Pass messages as a parameter
+            messages,
+            group_replacements,  # Pass group_replacements as a parameter
         )
 
     for node, pending in pending_replacements.items():
@@ -345,7 +361,7 @@ def run_canvas_file(file_path: str):
 
 
 def main():
-    run_canvas_file("/Users/nick/obsidian-vaults/omnit-testing-sync/simple3.canvas")
+    run_canvas_file("/Users/nick/obsidian-vaults/omnit-testing-sync/scifi.canvas")
 
 
 # make main function
