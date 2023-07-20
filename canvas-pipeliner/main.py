@@ -1,5 +1,6 @@
 import json
 from collections import deque
+import re
 from typing import Dict, List, Tuple, Any
 from dotenv import load_dotenv
 import os
@@ -7,6 +8,8 @@ import openai
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+vault_path = os.getenv("VAULT_PATH")
 
 
 def llm_call(
@@ -51,6 +54,18 @@ def dfs(node, visited, rec_stack, graph):
 
     rec_stack.remove(node)
     return False
+
+
+def get_page_content(page_name: str) -> str:
+    # Replace with the path to your Obsidian vault
+    obsidian_vault_path = vault_path
+    page_path = os.path.join(obsidian_vault_path, f"{page_name}.md")
+
+    if not os.path.exists(page_path):
+        return f"The page {page_name} does not exist"
+
+    with open(page_path, "r") as file:
+        return file.read()
 
 
 def parse_canvas_file(file_path):
@@ -153,21 +168,6 @@ def parse_canvas_file(file_path):
 def create_messages_list(
     node, groups, cards, responses, replacements, order, group_replacements
 ):
-    """
-    Generate a list of messages for a given node (card) in the conversation.
-
-    Parameters:
-    node: The current node (card) being processed.
-    groups: Dictionary of groups with their nodes.
-    cards: Dictionary of cards with their content.
-    responses: Dictionary of nodes with their responses from the language model.
-    replacements: Dictionary of nodes with replacements to be made in their content.
-    order: Dictionary indicating the order of processing for each node.
-    group_replacements: Dictionary of replacements to be made in the current group's content.
-
-    Returns:
-    messages: List of message dictionaries generated for the current node.
-    """
     # Identify the group to which the current node belongs
     group = next(
         (group for group, nodes in groups.items() if node in nodes), "no_group"
@@ -193,6 +193,15 @@ def create_messages_list(
                         placeholder, replacement
                     )
 
+                # Replace any occurrence of {{[[Page Name]]}} in previous_message
+                matches = re.findall(r"\{\{\[\[(.*?)\]\]\}\}", previous_message)
+                for match in matches:
+                    if match in group_replacements:
+                        placeholder = "{{[[{}]]}}".format(match)
+                        previous_message = previous_message.replace(
+                            placeholder, group_replacements[match]
+                        )
+
             # Add a 'user' message with this text and the language model's response
             messages.append({"role": "user", "content": previous_message})
             messages.append(responses[previous_node])
@@ -203,6 +212,19 @@ def create_messages_list(
         placeholder = "{" + variable_name + "}"
         if placeholder in current_message:
             current_message = current_message.replace(placeholder, replacement)
+
+    # Check for Obsidian page syntax and replace with page content
+    matches = re.findall(r"\{\{\[\[(.*?)\]\]\}\}", current_message)
+    for match in matches:
+        page_content = get_page_content(match)
+        print(f"Page content: {page_content}")
+        placeholder = rf"\{{\[\[{match}\]\]\}}"
+
+        print(f"Before replacement: {current_message}")
+        current_message = re.sub(placeholder, page_content, current_message)
+
+        print(f"After replacement: {current_message}")
+        group_replacements[match] = page_content
 
     messages.append({"role": "user", "content": current_message})
 
@@ -454,7 +476,7 @@ def run_canvas_file(file_path: str):
 
 
 def main():
-    run_canvas_file("/Users/nick/obsidian-vaults/omnit-testing-sync/color-test.canvas")
+    run_canvas_file(vault_path + "color-test.canvas")
 
 
 # make main function
