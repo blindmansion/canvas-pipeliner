@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "canvas-pipeliner"
+version = "0.1.0"
+description = ""
+authors = ["Blind Mansion <blindmansion@gmail.com>"]
+readme = "README.md"
+packages = [{include = "canvas-pipeliner"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pytest = "^7.4.0"
+openai = "^0.27.8"
+python-dotenv = "^1.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start = "canvas-pipeliner.main:main"
