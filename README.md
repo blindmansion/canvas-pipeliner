@@ -26,11 +26,22 @@ If a connection's label has an "@" symbol in front of it, like `@variable`, and 
 
 If the page name doesn't correspond to an existing page, the variable will be replaced with "The page x does not exist"
 
+## Slash Commands in Connection Labels
+
+In addition to colors, you can specify functionality using slash commands in connection labels. For example, if the first line in a connection label is a slash command like "/debug", the connection will be treated as a debug connection. This mirrors the functionality of a purple connection, but doesn't rely on color.
+
+Current commands include:
+
+- "/debug": This connection will create a Debug card, which displays both the complete input sent to the language model and the output it generates.
+- "/output": This connection will create an Output card, with the content replaced by the response of the language model from the source card.
+
+More commands will be added in future updates.
+
 ## Colors, Labels, and Special Cards
 
-Colors and labels on connections carry special meanings and can create special types of cards:
+Colors and labels on connections, or slash commands in labels, carry special meanings and can create special types of cards:
 
-- Cyan connections are 'Output' connections. The content of the target card is replaced by the response of the language model from the source card.
-- Purple connections are 'Debug' connections. These create Debug cards, which display both the complete input sent to the language model and the output it generates. The input includes all the previous messages in the group, and the output is the language model's response to this input. This can be useful for reviewing the context in which the language model generated a particular response.
+- Cyan connections or those labeled with "/output" are 'Output' connections. The content of the target card is replaced by the response of the language model from the source card.
+- Purple connections or those labeled with "/debug" are 'Debug' connections. These create Debug cards, which display both the complete input sent to the language model and the output it generates. The input includes all the previous messages in the group, and the output is the language model's response to this input. This can be useful for reviewing the context in which the language model generated a particular response.
 
 By automating the process of generating and storing these conversational flows, this application provides a powerful tool for creating complex, interactive scenarios with a language model.

@@ -97,6 +97,7 @@ def parse_canvas_file(file_path):
     output_edges = []
     input_output_edges = []
     card_spatial_data = {}
+    edge_commands = {}
 
     # Define a mapping from color codes to color names
     color_map = {
@@ -143,7 +144,16 @@ def parse_canvas_file(file_path):
 
         # If the edge has a label, store it
         if "label" in edge:
-            link_labels[(edge["fromNode"], edge["toNode"])] = edge["label"]
+            label = edge["label"]
+            lines = label.split("\n")
+            if lines[0].startswith("/"):
+                command, *remaining_lines = lines
+                edge_commands[(edge["fromNode"], edge["toNode"])] = command
+                link_labels[(edge["fromNode"], edge["toNode"])] = "\n".join(
+                    remaining_lines
+                )
+            else:
+                link_labels[(edge["fromNode"], edge["toNode"])] = label
 
         # Add the edge to the links list
         links.append((edge["fromNode"], edge["toNode"]))
@@ -166,6 +176,7 @@ def parse_canvas_file(file_path):
         edge_colors,
         output_edges,
         input_output_edges,
+        edge_commands,
     )
 
 
@@ -258,6 +269,7 @@ def process_outgoing_edges(
     cards,
     messages,
     group_replacements,
+    edge_commands,
 ):
     """
     Process all outgoing edges from a given node in the conversation graph.
@@ -277,17 +289,21 @@ def process_outgoing_edges(
     - cards: A dictionary mapping each node to its content.
     - messages: A list of messages so far in the current group.
     - group_replacements: A dictionary of variable replacements for the current group.
+    - edge_commands: A dictionary mapping each edge to its command.
     """
     for outgoing_node in outgoing_edges[node]:
         edge = (node, outgoing_node)
 
-        # Check if the edge is an output edge
-        if edge in output_edges:
+        # Check for a command associated with the edge
+        command = edge_commands.get(edge)
+
+        # Check if the edge is an output edge or has an "/output" command
+        if edge in output_edges or command == "/output":
             cards[outgoing_node] = f"{responses[node]['content']}"
             continue
 
-        # Check if the edge is an input-output edge
-        elif edge in input_output_edges:
+        # Check if the edge is an input-output edge or has a "/debug" command
+        elif edge in input_output_edges or command == "/debug":
             # Gather all messages in the group except the last one
             all_messages = [
                 f"### {'USER' if m['role'] == 'user' else 'ASSISTANT'}:\n{m['content']}"
@@ -327,6 +343,7 @@ def process_graph(
     output_edges: List[Tuple[str, str]],
     input_output_edges: List[Tuple[str, str]],
     canvas: Dict,
+    edge_commands: Dict[Tuple[str, str], str],
 ) -> List[Dict[str, Any]]:
     """
     Process a graph that represents a conversation structure, make calls to a language model and handle the responses.
@@ -413,6 +430,7 @@ def process_graph(
             cards,
             messages,
             group_replacements,
+            edge_commands,
         )
 
     # Complete any remaining replacements in the card text
@@ -456,6 +474,7 @@ def run_canvas_file(file_path: str):
         link_colors,
         output_edges,
         input_output_edges,
+        edge_commands,
     ) = parse_canvas_file(file_path)
 
     # Build the graph
@@ -481,6 +500,7 @@ def run_canvas_file(file_path: str):
         output_edges,
         input_output_edges,
         canvas_data,
+        edge_commands,
     )
     update_canvas_data(canvas_data, cards)
     save_canvas_data(file_path, canvas_data)
